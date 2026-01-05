@@ -10,3 +10,4 @@ genai.configure(api_key=api_key)
 model = genai.GenerativeModel("gemma-3-4b-it")
 response = model.generate_content("Hello from Gemma 3 4B!")
 print(response.text)
+
