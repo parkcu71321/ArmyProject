@@ -137,3 +137,101 @@ AI Agent가 단순 명령 수행을 넘어 상황을 판단 -> 계획 수립 -> 
 - Week 3의 로봇팔 제어 Tool과 결합 가능한 구조
 - 향후 Vision 기반 객체 인식 결과를 Planner 입력으로 확장 가능
 
+## Week 5: LLM 기반 자율 좌표 이동 AI Agent 구현
+
+목표
+- 사용자의 자연어 입력에서 목표 좌표(x, y, z)를 추출하고
+- AI Agent가 현재 좌표와 목표 좌표를 비교하여
+- 판단 → 이동 → 결과 평가 → 재계획을 반복 수행하는
+  자율 좌표 이동 Agent 파이프라인을 구현한다.
+
+본 구조는 가상 환경에서의 좌표 판단을 기반으로 하며,
+향후 실제 로봇팔 제어 및 Vision 기반 위치 인식과 결합 가능한 Agent 아키텍처를 목표로 한다.
+
+구현 내용
+
+1. Planner (LLM 기반 판단 모듈) – Planner.py
+- LLM을 사용하여 **다음 한 번의 이동 방향(action)만 결정
+- 실제 이동 수행 x
+- 좌표 직접 수정 x
+
+구현 특징
+- 현재 좌표(current_position)와 목표 좌표(target_position)를 비교하여 판단
+- delta = target - current의 부호(sign)만을 기준으로 이동 방향 결정
+- 자연어 직관(앞/뒤/가까움 등)을 전면 배제하여 LLM 판단 통제
+- 한 번에 하나의 축만 이동하도록 제한
+- JSON 형식 출력 강제 및 안전한 파싱 로직 구현
+
+
+2. Executor (행동 실행 모듈) – Executor.py
+- Planner가 결정한 단일 이동 명령을 실제 좌표 변화로 변환
+- 3차원 격자 공간에서 한 번에 ±1 이동만 허용
+
+지원 행동
+- move_right / move_left  (x축)
+- move_back / move_forward (y축)
+- move_up / move_down (z축)
+
+구현 특징
+- 이동 결과를 직접 상태에 반영하지 않고 실행 결과 객체로 반환
+- Executor는 “어떻게 움직일지”만 담당하며,
+  상태 관리 책임은 StateManager에 위임
+
+3. State Manager (상태 관리 모듈) – StateManager.py
+- Agent의 상태를 단일 객체로 관리
+  - current_position
+  - target_position
+  - action history
+- Executor의 실행 결과를 반영하여 좌표 업데이트
+- 모든 이동 이력을 timestamp와 함께 누적 저장
+
+구현 특징
+- 상태 변경 책임을 한 곳으로 집중
+- Agent의 행동 이력을 명시적으로 기록
+- 디버깅 및 시각화, 추후 학습 데이터로 확장 가능
+
+4. Feedback Loop (결과 평가 모듈) – FeedbackLoop.py
+- 현재 좌표와 목표 좌표를 비교하여 다음 행동을 판단
+
+판단 결과
+- DONE : 목표 좌표 도달
+- REPLAN : 목표 좌표에 아직 도달하지 않음
+
+구현 특징
+- FeedbackLoop는 실행 주체가 아닌 감독자(Supervisor) 역할
+- 실행 결과를 단순 성공/실패가 아닌
+  다음 행동 결정 신호로 추상화
+
+5. Main Loop (Agent Orchestration) – main.py
+- Planner -> Executor -> StateManager -> FeedbackLoop를 하나의 루프로 통합
+- 사용자 입력에서 목표 좌표를 추출
+- Feedback 판단에 따라 재계획을 반복 수행
+
+구현 특징
+- main은 판단 로직을 가지지 않고 전체 흐름만 제어
+- LLM은 Planner에만 사용되어 책임이 명확히 분리됨
+- while-loop 자체가 곧 자율 Agent Loop
+
+동작 흐름
+1. 사용자 자연어 명령 입력  
+   예) `3,5,4에 있는 거 잡아줘`
+   
+3. main에서 목표 좌표 추출 및 초기 상태 설정
+
+4. Planner가 현재 좌표와 목표 좌표를 비교하여 다음 이동 방향 결정
+
+5. Executor가 이동 수행
+
+6. StateManager가 좌표 및 이력 업데이트
+
+7. FeedbackLoop가 결과 평가
+   - DONE → Agent 종료
+   - REPLAN → 다음 루프 진행
+
+특징
+- LLM을 전능한 제어자가 아닌 계획자(Planner)로만 사용
+- 판단 / 실행 / 상태 / 평가 책임이 명확히 분리된 구조
+- 실패를 인지하고 스스로 수정하는 자율 Agent 구현
+- 단순 반응형 시스템이 아닌 목표 지향적 AI Agent
+- Week 2 Vision 인식, Week 3 로봇팔 제어와 결합 가능한 구조
+- 실제 물리 환경으로 확장 가능한 좌표 기반 Agent 아키텍처 완성
